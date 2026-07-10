@@ -321,60 +321,227 @@ Main steps:
 
 ---
 
-## Current Status
+## Day 2: DBSCAN Clustering and Point Cloud Output
 
-Day 1 completed.
+After completing the Day 1 preprocessing pipeline, DBSCAN clustering was applied to the non-ground point cloud. The goal of this step is to group nearby 3D LiDAR points into object-like clusters after the road surface has been removed.
+
+The Day 2 pipeline extends the previous workflow as follows:
+
+```text
+
+Raw KITTI LiDAR
+
+        ↓
+
+ROI Cropping
+
+        ↓
+
+Voxel Downsampling
+
+        ↓
+
+RANSAC Ground Removal
+
+        ↓
+
+Non-Ground Point Cloud
+
+        ↓
+
+DBSCAN Clustering
+
+        ↓
+
+Colored Cluster Visualization
+
+        ↓
+
+Saved Point Cloud Outputs
+
+```
+
+### DBSCAN Clustering
+
+DBSCAN was applied to the non-ground point cloud using Open3D’s built-in clustering method:
+
+```python
+
+labels = np.array(
+
+    non_ground_cloud.cluster_dbscan(
+
+        eps=0.8,
+
+        min_points=10,
+
+        print_progress=True
+
+    )
+
+)
+
+```
+
+DBSCAN groups nearby points based on density. It is useful for this project because it does not require a fixed number of clusters in advance and can mark sparse points as noise.
+
+The main parameters are:
+
+- `eps`: neighborhood radius in meters
+
+- `min_points`: minimum number of neighboring points required to form a dense region
+
+Several parameter combinations were tested, including:
+
+```text
+
+eps = 0.4, min_points = 10
+
+eps = 0.5, min_points = 10
+
+eps = 0.7, min_points = 10
+
+eps = 0.8, min_points = 20
+
+eps = 1.0, min_points = 10
+
+```
+
+The purpose of this experimentation was to observe how DBSCAN behavior changes with different density settings.
+
+### Observations from Clustering
+
+The DBSCAN output showed that clustering on raw non-ground LiDAR points can be noisy. Some clusters appeared scattered, while others formed multi-colored horizontal scan-line structures. This is expected in a classical LiDAR pipeline because RANSAC removes the dominant road plane but can still leave behind curb, sidewalk, wall, vegetation, and LiDAR scan-ring patterns.
+
+Current observation:
+
+```text
+
+DBSCAN is technically working, but the clusters are not yet clean object-level detections.
+
+```
+
+This means the pipeline successfully performs clustering, but further filtering and bounding box estimation are needed before the clusters become reliable object proposals.
+
+### Saved Point Cloud Outputs
+
+To make the intermediate results easier to inspect and preserve, the non-ground point cloud and clustered point cloud are saved as `.ply` files using Open3D:
+
+```python
+
+o3d.io.write_point_cloud(
+
+    "results/non_ground_cloud_000010.ply",
+
+    non_ground_cloud
+
+)
+
+o3d.io.write_point_cloud(
+
+    "results/clustered_cloud_000010.ply",
+
+    clustered_cloud
+
+)
+
+```
+
+The saved files are:
+
+```text
+
+results/non_ground_cloud_000010.ply
+
+results/clustered_cloud_000010.ply
+
+```
+
+These files can be reopened later in Open3D, MeshLab, CloudCompare, or other 3D visualization tools.
+
+### Sample Day 2 Run
+
+Example command:
+
+```bash
+
+python main.py --bin_path data/velodyne/training/velodyne/000010.bin --dbscan_eps 0.8 --dbscan_min_points 10
+
+```
+
+Sample output:
+
+```text
+
+Running DBSCAN clustering on non-ground points...
+
+Precompute neighbors.[========================================] 100%
+
+Detected clusters: 91
+
+Noise points: 869
+
+Visualizing DBSCAN clusters...
+
+Valid clusters after filtering: 1
+
+Cluster 0: 303 points
+
+Saved non-ground cloud to results/non_ground_cloud_000010.ply
+
+Saved clustered cloud to results/clustered_cloud_000010.ply
+
+```
+
+### Day 2 Learning
+
+The key learning from Day 2 is that clustering raw LiDAR points is sensitive to preprocessing quality and DBSCAN parameters. A simple DBSCAN step can identify density-based structures, but object-level perception requires additional steps such as:
+
+- narrower ROI filtering
+
+- height filtering
+
+- cluster size filtering
+
+- bounding box estimation
+
+- spatial analysis
+
+- comparison with KITTI labels
+
+This reinforces why autonomous perception pipelines are usually staged: raw point clouds must be cleaned, filtered, clustered, and analyzed before they become useful object detections.
+
+### Current Status After Day 2
 
 Completed components:
 
-- KITTI `.bin` loading
-- NumPy parsing
-- Open3D point cloud conversion
-- Raw point cloud visualization
-- ROI cropping
-- Voxel downsampling
-- RANSAC ground plane removal
-- Ground and non-ground point separation
-- Ground removal visualization
+- DBSCAN clustering on non-ground points
 
----
+- Colored cluster visualization
 
-## Next Steps
+- Noise point identification
+
+- Cluster count reporting
+
+- Valid cluster extraction
+
+- Saving non-ground point cloud as `.ply`
+
+- Saving clustered point cloud as `.ply`
 
 Planned next steps:
 
-- Apply DBSCAN clustering on non-ground points
-- Estimate 3D bounding boxes around clusters
-- Filter clusters by size and point count
-- Compute spatial metrics such as centroid and distance from ego vehicle
-- Save object-level results to JSON
-- Generate BEV visualizations
-- Add screenshots to the README
-- Polish the repository for portfolio presentation
+- Estimate 3D bounding boxes for each valid cluster
 
----
+- Filter clusters based on bounding box dimensions
 
-## Skills Demonstrated
+- Compute centroids, object distances, and point density
 
-This Day 1 implementation demonstrates:
+- Save detection-level outputs as JSON
 
-- 3D point cloud processing
-- KITTI LiDAR data handling
-- NumPy-based binary file parsing
-- Open3D point cloud representation
-- Region-of-interest filtering
-- Voxel downsampling
-- RANSAC plane segmentation
-- Ground plane removal
-- Basic autonomous perception pipeline design
+- Generate BEV visualization
 
----
-
-## Limitations
-
-The current version does not yet perform object detection or object clustering. It only prepares the point cloud by removing the ground plane and isolating non-ground points.
-
-Future versions will add DBSCAN-based clustering, bounding box estimation, and spatial analysis to create a complete classical LiDAR perception pipeline.
+- Add screenshots to the repository
 
 ---
 
