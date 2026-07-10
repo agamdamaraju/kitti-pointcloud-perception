@@ -23,3 +23,11 @@ def visualize_clusters(clustered_cloud):
         width=1200,
         height=800
     )
+
+def visualize_bounding_boxes(geometries):
+    o3d.visualization.draw_geometries(
+        geometries,
+        window_name="3D Bounding Boxes on DBSCAN Clusters",
+        width=1200,
+        height=800
+    )

@@ -1,16 +1,16 @@
 # KITTI 3D Point Cloud Perception Pipeline
 
-This project implements a 3D LiDAR point cloud processing pipeline using the KITTI autonomous driving dataset. The current version focuses on Day 1 development: loading raw KITTI Velodyne point clouds, visualizing them, cropping the region of interest, applying voxel downsampling, and removing the road surface using RANSAC-based ground plane segmentation.
+This project implements a classical 3D LiDAR point cloud perception pipeline using the KITTI autonomous driving dataset. The pipeline processes raw Velodyne LiDAR point clouds, removes the ground plane, clusters non-ground points, estimates 3D bounding boxes, and generates object-like proposals for autonomous driving scenes.
 
-The goal of this project is to build a compact perception pipeline that can later be extended with object clustering, bounding box estimation, BEV visualization, and ego-centric spatial analysis.
+The goal of this project is to demonstrate practical 3D point cloud processing techniques for perception pipelines, including LiDAR data loading, region-of-interest filtering, voxel downsampling, RANSAC ground removal, DBSCAN clustering, 3D bounding box estimation, and basic heuristic object labeling.
 
 ---
 
 ## Project Objective
 
-The objective of this project is to process raw KITTI LiDAR point clouds and build a classical 3D perception pipeline for autonomous driving scenes.
+The objective of this project is to process raw KITTI LiDAR point clouds and build a compact classical perception pipeline for autonomous driving use cases.
 
-The current Day 1 pipeline focuses on:
+The pipeline currently supports:
 
 - Loading KITTI `.bin` Velodyne point cloud files
 - Converting raw binary LiDAR data into NumPy arrays
@@ -18,7 +18,10 @@ The current Day 1 pipeline focuses on:
 - Cropping the point cloud to a useful driving region
 - Applying voxel downsampling to reduce point density
 - Removing the ground plane using RANSAC
-- Visualizing ground and non-ground points separately
+- Applying DBSCAN clustering to non-ground points
+- Estimating 3D bounding boxes around valid clusters
+- Applying simple geometry-based object heuristics
+- Saving intermediate point cloud outputs as `.ply` files
 
 ---
 
@@ -41,32 +44,34 @@ z = height
 intensity = LiDAR return strength
 ```
 
-For Day 1, the pipeline was tested on individual KITTI Velodyne frames.
+The current implementation was tested on individual KITTI Velodyne frames from the training split.
 
 ---
 
-## Day 1 Pipeline
-
-The implemented Day 1 pipeline is:
+## Current Pipeline
 
 ```text
-Raw KITTI .bin file
+Raw KITTI LiDAR
         ↓
-Load binary LiDAR data using NumPy
+Load .bin file using NumPy
         ↓
-Extract XYZ coordinates and intensity values
+Extract XYZ coordinates and intensity
         ↓
 Convert XYZ points to Open3D point cloud
         ↓
-Crop region of interest
+Region-of-interest cropping
         ↓
-Apply voxel downsampling
+Voxel downsampling
         ↓
-Estimate ground plane using RANSAC
+RANSAC ground plane removal
         ↓
-Separate ground and non-ground points
+DBSCAN clustering on non-ground points
         ↓
-Visualize results
+3D bounding box estimation
+        ↓
+Geometry-based heuristic labeling
+        ↓
+Object-like detection summary
 ```
 
 ---
@@ -139,7 +144,7 @@ Example:
 downsampled_cloud = point_cloud.voxel_down_sample(voxel_size=0.15)
 ```
 
-A voxel size of `0.15` meters was used for the initial experiment.
+A voxel size of `0.15` meters was used for the current experiments.
 
 This makes later processing faster and reduces unnecessary point density.
 
@@ -151,7 +156,7 @@ The road surface usually forms the dominant flat plane in a driving scene. RANSA
 
 ```python
 plane_model, inliers = point_cloud.segment_plane(
-    distance_threshold=0.2,
+    distance_threshold=0.25,
     ransac_n=3,
     num_iterations=1000
 )
@@ -165,22 +170,6 @@ ax + by + cz + d = 0
 
 Points close to this plane are treated as ground points. All other points are treated as non-ground points.
 
----
-
-### 6. Ground and Non-Ground Separation
-
-After detecting the ground plane, the point cloud is split into:
-
-```text
-Ground points = road surface
-Non-ground points = vehicles, pedestrians, signs, poles, trees, and other objects
-```
-
-```python
-ground_cloud = point_cloud.select_by_index(inliers)
-non_ground_cloud = point_cloud.select_by_index(inliers, invert=True)
-```
-
 For visualization:
 
 ```text
@@ -190,29 +179,105 @@ Red = non-ground points
 
 ---
 
-## Sample Result
+### 6. DBSCAN Clustering
+
+After ground removal, DBSCAN clustering is applied to the non-ground point cloud.
+
+DBSCAN was selected because it does not require a fixed number of clusters in advance and can mark sparse points as noise.
+
+The main parameters are:
+
+- `eps`: neighborhood radius in meters
+- `min_points`: minimum number of nearby points required to form a cluster
+
+Example:
+
+```python
+labels = np.array(
+    non_ground_cloud.cluster_dbscan(
+        eps=0.6,
+        min_points=6,
+        print_progress=True
+    )
+)
+```
+
+Several parameter settings were tested during development:
+
+```text
+eps = 0.5, min_points = 10
+eps = 0.8, min_points = 10
+eps = 1.0, min_points = 10
+eps = 0.8, min_points = 20
+eps = 0.6, min_points = 6
+```
+
+The final Day 3 result used:
+
+```text
+voxel_size = 0.15
+ground_threshold = 0.25
+dbscan_eps = 0.6
+dbscan_min_points = 6
+```
+
+---
+
+### 7. 3D Bounding Box Estimation
+
+After clustering, valid clusters are converted into 3D bounding box proposals using Open3D axis-aligned bounding boxes.
+
+```python
+bbox = cluster_cloud.get_axis_aligned_bounding_box()
+```
+
+Each bounding box provides:
+
+```text
+center position
+extent/dimensions
+volume
+point density
+```
+
+Simple geometry filters are applied to remove invalid clusters such as tiny noise, overly large merged structures, flat scan-line artifacts, and sparse clusters.
+
+---
+
+### 8. Heuristic Object Labeling
+
+The current implementation does not train a neural 3D detector. Instead, it applies simple geometry-based heuristics to label object-like clusters.
+
+Example heuristic labels:
+
+```text
+vehicle_like
+pedestrian_or_pole_like
+object_like / unknown
+```
+
+A cluster is classified as `vehicle_like` when its bounding box dimensions fall within a rough vehicle-sized range.
+
+---
+
+## Sample Day 1 Result: Ground Removal
 
 Example command:
 
 ```bash
-python main.py --bin_path data/velodyne/testing/velodyne/000010.bin
+python main.py --bin_path data/velodyne/training/velodyne/000010.bin
 ```
 
 Sample output:
 
 ```text
-Loading point cloud: data/velodyne/testing/velodyne/000010.bin
 Raw points: 115875
-Visualizing raw point cloud...
 Points after ROI crop: 53552
-Visualizing cropped point cloud...
 Points after voxel downsampling: 17396
-Visualizing downsampled point cloud...
 Detected ground plane equation:
 [-0.01004282  0.03282229  0.99941075  1.75464191]
 Ground points: 7499
 Non-ground points: 9897
-Visualizing ground removal result...
 ```
 
 The detected ground plane equation corresponds approximately to:
@@ -223,31 +288,110 @@ The detected ground plane equation corresponds approximately to:
 
 Since the z coefficient is close to `1.0`, the estimated plane is mostly horizontal, which is consistent with a road surface.
 
-## Day 2: DBSCAN Clustering
+---
+
+## Sample Day 2 Result: DBSCAN Clustering
 
 After removing the ground plane, DBSCAN clustering was applied to the non-ground point cloud. The goal was to group nearby 3D points into object-like clusters that could represent vehicles, pedestrians, poles, signs, trees, or other scene structures.
 
-DBSCAN was selected because it does not require a fixed number of clusters and can mark sparse points as noise. This makes it suitable for exploratory LiDAR point cloud clustering.
+Sample command:
 
-The main parameters were:
+```bash
+python main.py --bin_path data/velodyne/training/velodyne/000010.bin --dbscan_eps 0.8 --dbscan_min_points 10
+```
 
-- `eps`: neighborhood radius in meters
+Sample output:
 
-- `min_points`: minimum number of nearby points needed to form a cluster
+```text
+Running DBSCAN clustering on non-ground points...
+Precompute neighbors.[========================================] 100%
+Detected clusters: 91
+Noise points: 869
+Visualizing DBSCAN clusters...
+Valid clusters after filtering: 1
+Cluster 0: 303 points
+```
 
-Several parameter settings were tested, including:
+Day 2 showed that clustering raw non-ground LiDAR points is sensitive to preprocessing quality and DBSCAN parameters. Some clusters can appear scattered or merge with scan-line structures, so bounding box filtering is needed before treating clusters as object proposals.
 
-- `eps=0.5`, `min_points=10`
+---
 
-- `eps=0.8`, `min_points=10`
+## Sample Day 3 Result: 3D Bounding Box Proposal
 
-- `eps=1.0`, `min_points=10`
+For frame `002000.bin`, the pipeline produced a valid vehicle-like object proposal.
 
-- `eps=0.8`, `min_points=20`
+Command:
 
-The best setting for the tested frame was selected based on visual inspection of whether object-like structures were separated cleanly without excessive fragmentation or merging.
+```bash
+python main.py --bin_path data/velodyne/training/velodyne/002000.bin \
+  --voxel_size 0.15 \
+  --ground_threshold 0.25 \
+  --dbscan_eps 0.6 \
+  --dbscan_min_points 6
+```
 
-The DBSCAN output provides object proposals that will be used in the next stage for 3D bounding box estimation.
+Output:
+
+```text
+Raw points: 115181
+Points after ROI crop: 59183
+Points after voxel downsampling: 20881
+Ground points: 11790
+Non-ground points: 9091
+
+Running DBSCAN clustering on non-ground points...
+Detected clusters: 145
+Noise points: 640
+Valid clusters after filtering: 1
+Cluster 0: 392 points
+
+3D Bounding Box Detection Summary
+--------------------------------
+Cluster 0 | vehicle_like | points=392 | center=[3.75, 3.14, -0.83] | extent=[3.86, 1.66, 1.11] | density=54.81
+```
+
+The detected cluster was classified as `vehicle_like` because its estimated 3D bounding box dimensions were approximately:
+
+```text
+length = 3.86 m
+width  = 1.66 m
+height = 1.11 m
+```
+
+These dimensions are consistent with a compact vehicle-like object proposal in a LiDAR point cloud.
+
+### Bounding Box Visualization
+
+![3D bounding box result for KITTI frame 002000](results/bounding_boxes_002000.png)
+
+---
+
+## Saved Point Cloud Outputs
+
+Intermediate point clouds are saved as `.ply` files using Open3D.
+
+Example:
+
+```python
+o3d.io.write_point_cloud(
+    "results/non_ground_cloud_002000.ply",
+    non_ground_cloud
+)
+
+o3d.io.write_point_cloud(
+    "results/clustered_cloud_002000.ply",
+    clustered_cloud
+)
+```
+
+Current saved outputs:
+
+```text
+results/non_ground_cloud_002000.ply
+results/clustered_cloud_002000.ply
+```
+
+These files can be reopened later in Open3D, MeshLab, CloudCompare, or other 3D visualization tools.
 
 ---
 
@@ -258,9 +402,14 @@ kitti-pointcloud-perception/
 ├── data/
 │   └── velodyne/
 ├── results/
+│   ├── bounding_boxes_002000.png
+│   ├── non_ground_cloud_002000.ply
+│   └── clustered_cloud_002000.ply
 ├── src/
 │   ├── loader.py
 │   ├── preprocess.py
+│   ├── clustering.py
+│   ├── detection.py
 │   └── visualize.py
 ├── main.py
 ├── requirements.txt
@@ -282,6 +431,8 @@ Main responsibilities:
 - Separate XYZ coordinates and intensity values
 - Convert NumPy arrays into Open3D point clouds
 
+---
+
 ### `src/preprocess.py`
 
 Contains preprocessing functions.
@@ -293,6 +444,34 @@ Main responsibilities:
 - Remove the ground plane using RANSAC
 - Separate ground and non-ground point clouds
 
+---
+
+### `src/clustering.py`
+
+Contains DBSCAN clustering utilities.
+
+Main responsibilities:
+
+- Run DBSCAN clustering on non-ground points
+- Assign colors to clusters
+- Identify noise points
+- Extract valid clusters for bounding box estimation
+
+---
+
+### `src/detection.py`
+
+Contains bounding box and heuristic detection logic.
+
+Main responsibilities:
+
+- Estimate 3D bounding boxes from valid clusters
+- Compute bounding box center, extent, volume, and density
+- Apply geometry-based filtering
+- Assign rough heuristic labels such as `vehicle_like` or `pedestrian_or_pole_like`
+
+---
+
 ### `src/visualize.py`
 
 Contains Open3D visualization utilities.
@@ -303,245 +482,98 @@ Main responsibilities:
 - Visualize cropped point clouds
 - Visualize downsampled point clouds
 - Visualize ground and non-ground points together
+- Visualize DBSCAN clusters
+- Visualize clusters with 3D bounding boxes
+
+---
 
 ### `main.py`
 
-Runs the complete Day 1 pipeline.
+Runs the full pipeline.
 
 Main steps:
 
 - Load KITTI point cloud
 - Visualize raw point cloud
 - Crop ROI
-- Visualize cropped cloud
 - Apply voxel downsampling
-- Visualize downsampled cloud
 - Remove ground plane
-- Visualize ground removal result
+- Run DBSCAN clustering
+- Extract valid clusters
+- Estimate 3D bounding boxes
+- Print detection summary
+- Save intermediate point clouds
 
 ---
 
-## Day 2: DBSCAN Clustering and Point Cloud Output
-
-After completing the Day 1 preprocessing pipeline, DBSCAN clustering was applied to the non-ground point cloud. The goal of this step is to group nearby 3D LiDAR points into object-like clusters after the road surface has been removed.
-
-The Day 2 pipeline extends the previous workflow as follows:
-
-```text
-
-Raw KITTI LiDAR
-
-        ↓
-
-ROI Cropping
-
-        ↓
-
-Voxel Downsampling
-
-        ↓
-
-RANSAC Ground Removal
-
-        ↓
-
-Non-Ground Point Cloud
-
-        ↓
-
-DBSCAN Clustering
-
-        ↓
-
-Colored Cluster Visualization
-
-        ↓
-
-Saved Point Cloud Outputs
-
-```
-
-### DBSCAN Clustering
-
-DBSCAN was applied to the non-ground point cloud using Open3D’s built-in clustering method:
-
-```python
-
-labels = np.array(
-
-    non_ground_cloud.cluster_dbscan(
-
-        eps=0.8,
-
-        min_points=10,
-
-        print_progress=True
-
-    )
-
-)
-
-```
-
-DBSCAN groups nearby points based on density. It is useful for this project because it does not require a fixed number of clusters in advance and can mark sparse points as noise.
-
-The main parameters are:
-
-- `eps`: neighborhood radius in meters
-
-- `min_points`: minimum number of neighboring points required to form a dense region
-
-Several parameter combinations were tested, including:
-
-```text
-
-eps = 0.4, min_points = 10
-
-eps = 0.5, min_points = 10
-
-eps = 0.7, min_points = 10
-
-eps = 0.8, min_points = 20
-
-eps = 1.0, min_points = 10
-
-```
-
-The purpose of this experimentation was to observe how DBSCAN behavior changes with different density settings.
-
-### Observations from Clustering
-
-The DBSCAN output showed that clustering on raw non-ground LiDAR points can be noisy. Some clusters appeared scattered, while others formed multi-colored horizontal scan-line structures. This is expected in a classical LiDAR pipeline because RANSAC removes the dominant road plane but can still leave behind curb, sidewalk, wall, vegetation, and LiDAR scan-ring patterns.
-
-Current observation:
-
-```text
-
-DBSCAN is technically working, but the clusters are not yet clean object-level detections.
-
-```
-
-This means the pipeline successfully performs clustering, but further filtering and bounding box estimation are needed before the clusters become reliable object proposals.
-
-### Saved Point Cloud Outputs
-
-To make the intermediate results easier to inspect and preserve, the non-ground point cloud and clustered point cloud are saved as `.ply` files using Open3D:
-
-```python
-
-o3d.io.write_point_cloud(
-
-    "results/non_ground_cloud_000010.ply",
-
-    non_ground_cloud
-
-)
-
-o3d.io.write_point_cloud(
-
-    "results/clustered_cloud_000010.ply",
-
-    clustered_cloud
-
-)
-
-```
-
-The saved files are:
-
-```text
-
-results/non_ground_cloud_000010.ply
-
-results/clustered_cloud_000010.ply
-
-```
-
-These files can be reopened later in Open3D, MeshLab, CloudCompare, or other 3D visualization tools.
-
-### Sample Day 2 Run
-
-Example command:
-
-```bash
-
-python main.py --bin_path data/velodyne/training/velodyne/000010.bin --dbscan_eps 0.8 --dbscan_min_points 10
-
-```
-
-Sample output:
-
-```text
-
-Running DBSCAN clustering on non-ground points...
-
-Precompute neighbors.[========================================] 100%
-
-Detected clusters: 91
-
-Noise points: 869
-
-Visualizing DBSCAN clusters...
-
-Valid clusters after filtering: 1
-
-Cluster 0: 303 points
-
-Saved non-ground cloud to results/non_ground_cloud_000010.ply
-
-Saved clustered cloud to results/clustered_cloud_000010.ply
-
-```
-
-### Day 2 Learning
-
-The key learning from Day 2 is that clustering raw LiDAR points is sensitive to preprocessing quality and DBSCAN parameters. A simple DBSCAN step can identify density-based structures, but object-level perception requires additional steps such as:
-
-- narrower ROI filtering
-
-- height filtering
-
-- cluster size filtering
-
-- bounding box estimation
-
-- spatial analysis
-
-- comparison with KITTI labels
-
-This reinforces why autonomous perception pipelines are usually staged: raw point clouds must be cleaned, filtered, clustered, and analyzed before they become useful object detections.
-
-### Current Status After Day 2
+## Current Status
 
 Completed components:
 
+- KITTI `.bin` loading
+- NumPy parsing
+- Open3D point cloud conversion
+- Raw point cloud visualization
+- ROI cropping
+- Voxel downsampling
+- RANSAC ground plane removal
+- Ground and non-ground point separation
 - DBSCAN clustering on non-ground points
-
 - Colored cluster visualization
-
 - Noise point identification
-
 - Cluster count reporting
-
 - Valid cluster extraction
-
+- 3D bounding box estimation
+- Geometry-based object proposal filtering
+- Heuristic object labeling
 - Saving non-ground point cloud as `.ply`
-
 - Saving clustered point cloud as `.ply`
 
-Planned next steps:
+---
 
-- Estimate 3D bounding boxes for each valid cluster
+## Key Learnings
 
-- Filter clusters based on bounding box dimensions
+This project demonstrates that classical LiDAR perception pipelines are highly dependent on preprocessing and parameter tuning.
 
-- Compute centroids, object distances, and point density
+Important observations:
 
+- Raw LiDAR point clouds contain road surfaces, object points, background structures, and sensor noise.
+- ROI cropping reduces irrelevant spatial regions.
+- Voxel downsampling reduces point density while preserving overall structure.
+- RANSAC ground removal is necessary before clustering because the road surface can dominate the point cloud.
+- DBSCAN can group nearby non-ground points, but results depend strongly on `eps`, `min_points`, and preprocessing quality.
+- Bounding box estimation helps convert clusters into object-like proposals.
+- Geometry filtering is required because DBSCAN can produce merged or background-like clusters.
+- The current pipeline performs clustering-based object proposal generation, not trained deep learning-based 3D object detection.
+
+---
+
+## Limitations
+
+This is a classical point cloud processing pipeline and does not train a neural 3D detector.
+
+Current limitations:
+
+- DBSCAN clusters can merge nearby structures or include scan-line artifacts.
+- Bounding boxes are axis-aligned, not oriented boxes.
+- Heuristic labels are based only on bounding box dimensions.
+- The pipeline does not yet compare predictions against KITTI ground-truth labels.
+- The current implementation processes recorded LiDAR frames, not live sensor data.
+- This project does not reconstruct full 3D object meshes or models.
+
+---
+
+## Planned Next Steps
+
+Planned improvements:
+
+- Compute ego-centric spatial metrics such as object distance and relative position
 - Save detection-level outputs as JSON
-
-- Generate BEV visualization
-
-- Add screenshots to the repository
+- Generate a CSV summary across multiple frames
+- Add bird’s-eye-view visualization
+- Add optional KITTI label comparison for evaluation-lite
+- Test the pipeline on more frames and select clean examples
+- Add oriented bounding boxes for better object proposal quality
 
 ---
 
@@ -564,3 +596,22 @@ Spatial Analysis
         ↓
 BEV Visualization
 ```
+
+---
+
+## Skills Demonstrated
+
+This project demonstrates practical experience with:
+
+- 3D LiDAR point cloud processing
+- KITTI autonomous driving data
+- NumPy binary data parsing
+- Open3D point cloud representation
+- Region-of-interest filtering
+- Voxel downsampling
+- RANSAC plane segmentation
+- Ground plane removal
+- DBSCAN clustering
+- 3D bounding box estimation
+- Classical object proposal generation
+- Autonomous perception pipeline design
