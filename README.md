@@ -362,7 +362,7 @@ These dimensions are consistent with a compact vehicle-like object proposal in a
 
 ### Bounding Box Visualization
 
-![3D bounding box result for KITTI frame 002000](results/bounding_boxes_002000.png)
+![3D bounding box result for KITTI frame 002000](./results/bounding_boxes_002000.png)
 
 ---
 
