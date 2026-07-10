@@ -223,6 +223,32 @@ The detected ground plane equation corresponds approximately to:
 
 Since the z coefficient is close to `1.0`, the estimated plane is mostly horizontal, which is consistent with a road surface.
 
+## Day 2: DBSCAN Clustering
+
+After removing the ground plane, DBSCAN clustering was applied to the non-ground point cloud. The goal was to group nearby 3D points into object-like clusters that could represent vehicles, pedestrians, poles, signs, trees, or other scene structures.
+
+DBSCAN was selected because it does not require a fixed number of clusters and can mark sparse points as noise. This makes it suitable for exploratory LiDAR point cloud clustering.
+
+The main parameters were:
+
+- `eps`: neighborhood radius in meters
+
+- `min_points`: minimum number of nearby points needed to form a cluster
+
+Several parameter settings were tested, including:
+
+- `eps=0.5`, `min_points=10`
+
+- `eps=0.8`, `min_points=10`
+
+- `eps=1.0`, `min_points=10`
+
+- `eps=0.8`, `min_points=20`
+
+The best setting for the tested frame was selected based on visual inspection of whether object-like structures were separated cleanly without excessive fragmentation or merging.
+
+The DBSCAN output provides object proposals that will be used in the next stage for 3D bounding box estimation.
+
 ---
 
 ## Repository Structure

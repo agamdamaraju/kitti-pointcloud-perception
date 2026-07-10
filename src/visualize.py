@@ -15,3 +15,11 @@ def visualize_ground_removal(non_ground_cloud, ground_cloud):
         width=1200,
         height=800
     )
+
+def visualize_clusters(clustered_cloud):
+    o3d.visualization.draw_geometries(
+        [clustered_cloud],
+        window_name="DBSCAN Clusters",
+        width=1200,
+        height=800
+    )
