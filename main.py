@@ -5,6 +5,7 @@ from src.clustering import run_dbscan_clustering, color_clusters, extract_cluste
 from src.detection import create_bounding_box_detections, print_detection_summary
 from src.spatial_analysis import add_spatial_analysis
 from src.export import save_detections_csv, save_detections_json
+from src.bev import plot_dev_detections
 import argparse, os, open3d as o3d
 from pathlib import Path
 
@@ -96,6 +97,9 @@ def main():
     csv_output_path = f"results/detections_{frame_id}.csv"
     save_detections_json(detections, json_output_path)
     save_detections_csv(detections, csv_output_path)
+
+    bev_output_path = f"results/bev_{frame_id}.png"
+    plot_dev_detections(detections, bev_output_path)
 
     if len(bbox_geometries) > 0:
         print("Visualizing clusters with 3D bounding boxes...")

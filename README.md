@@ -1,8 +1,8 @@
 # KITTI 3D Point Cloud Perception Pipeline
 
-This project implements a classical 3D LiDAR point cloud perception pipeline using the KITTI autonomous driving dataset. The pipeline processes raw Velodyne LiDAR point clouds, removes the ground plane, clusters non-ground points, estimates 3D bounding boxes, computes ego-centric spatial metrics, and exports structured detection results.
+This project implements a classical 3D LiDAR point cloud perception pipeline using the KITTI autonomous driving dataset. The pipeline processes raw Velodyne LiDAR point clouds, removes the ground plane, clusters non-ground points, estimates 3D bounding boxes, computes ego-centric spatial metrics, generates bird's-eye-view visualizations, and exports structured detection results.
 
-The goal of this project is to demonstrate practical 3D point cloud processing techniques for autonomous perception pipelines, including LiDAR data loading, region-of-interest filtering, voxel downsampling, RANSAC ground removal, DBSCAN clustering, 3D bounding box estimation, spatial analysis, and structured output generation.
+The goal of this project is to demonstrate practical 3D point cloud processing techniques for autonomous perception pipelines, including LiDAR data loading, region-of-interest filtering, voxel downsampling, RANSAC ground removal, DBSCAN clustering, 3D bounding box estimation, spatial analysis, BEV visualization, and structured output generation.
 
 ---
 
@@ -23,6 +23,7 @@ The pipeline currently supports:
 - Applying simple geometry-based object heuristics
 - Computing ego-centric spatial metrics
 - Assigning relative object position labels
+- Generating bird's-eye-view visualizations
 - Saving detection outputs as JSON and CSV
 - Saving intermediate point cloud outputs as `.ply` files
 
@@ -75,6 +76,8 @@ DBSCAN clustering on non-ground points
 Geometry-based heuristic labeling
         ↓
 Ego-centric spatial analysis
+        ↓
+Bird's-eye-view visualization
         ↓
 JSON and CSV detection export
 ```
@@ -217,7 +220,7 @@ eps = 0.8, min_points = 20
 eps = 0.6, min_points = 6
 ```
 
-The Part 3 and Part 4 results used:
+The Part 3, Part 4, and Part 5 results used:
 
 ```text
 voxel_size = 0.15
@@ -305,7 +308,25 @@ This converts raw 3D detections into more interpretable ego-centric perception o
 
 ---
 
-### 10. Detection Export
+### 10. Bird's-Eye-View Visualization
+
+The pipeline generates a bird's-eye-view visualization from the final detection output.
+
+The BEV plot shows:
+
+```text
+ego vehicle origin
+object center location
+2D bounding box footprint
+heuristic object label
+relative position label
+```
+
+This gives a top-down view of where the detected object is located relative to the ego vehicle.
+
+---
+
+### 11. Detection Export
 
 The final detection results are exported as both JSON and CSV.
 
@@ -315,11 +336,11 @@ Example JSON output:
 [
     {
         "cluster_id": 0,
-        "num_points": 392,
-        "center": [3.75, 3.14, -0.83],
-        "extent": [3.86, 1.66, 1.11],
-        "volume": 7.15,
-        "density": 54.81,
+        "num_points": 377,
+        "center": [3.75, 3.14, -0.81],
+        "extent": [3.86, 1.66, 1.09],
+        "volume": 6.98,
+        "density": 54.05,
         "class_heuristic": "vehicle_like",
         "frame_id": "002000",
         "distance_3d_m": 4.96,
@@ -333,14 +354,14 @@ Example CSV output:
 
 ```text
 frame_id,cluster_id,class_heuristic,num_points,center_x,center_y,center_z,extent_x,extent_y,extent_z,volume,density,distance_3d_m,distance_xy_m,relative_position
-002000,0,vehicle_like,392,3.75,3.14,-0.83,3.86,1.66,1.11,7.15,54.81,4.96,4.89,near_front_left
+002000,0,vehicle_like,377,3.75,3.14,-0.81,3.86,1.66,1.09,6.98,54.05,4.96,4.89,near_front_left
 ```
 
 ---
 
 ## Part 1: Ground Removal
 
-Example command:
+Command:
 
 ```bash
 python main.py --bin_path data/velodyne/training/velodyne/000010.bin
@@ -414,18 +435,18 @@ Output:
 Raw points: 115181
 Points after ROI crop: 59183
 Points after voxel downsampling: 20881
-Ground points: 11790
-Non-ground points: 9091
+Ground points: 11578
+Non-ground points: 9303
 
 Running DBSCAN clustering on non-ground points...
-Detected clusters: 145
-Noise points: 640
+Detected clusters: 152
+Noise points: 691
 Valid clusters after filtering: 1
-Cluster 0: 392 points
+Cluster 0: 377 points
 
 3D Bounding Box Detection Summary
 --------------------------------
-Cluster 0 | vehicle_like | points=392 | center=[3.75, 3.14, -0.83] | extent=[3.86, 1.66, 1.11] | density=54.81
+Cluster 0 | vehicle_like | points=377 | center=[3.75, 3.14, -0.81] | extent=[3.86, 1.66, 1.09] | density=54.05
 ```
 
 The detected cluster was classified as `vehicle_like` because its estimated 3D bounding box dimensions were approximately:
@@ -433,7 +454,7 @@ The detected cluster was classified as `vehicle_like` because its estimated 3D b
 ```text
 length = 3.86 m
 width  = 1.66 m
-height = 1.11 m
+height = 1.09 m
 ```
 
 These dimensions are consistent with a compact vehicle-like object proposal in a LiDAR point cloud.
@@ -452,12 +473,12 @@ For frame `002000.bin`, the detection result includes:
 
 ```text
 Object class heuristic: vehicle_like
-Number of cluster points: 392
-Bounding box center: [3.75, 3.14, -0.83]
-Bounding box extent: [3.86, 1.66, 1.11]
-Point density: 54.81
-3D distance from ego vehicle: 4.96 m
-XY distance from ego vehicle: 4.89 m
+Number of cluster points: 377
+Bounding box center: [3.75, 3.14, -0.81]
+Bounding box extent: [3.86, 1.66, 1.09]
+Point density: 54.05
+3D distance from ego vehicle: about 4.96 m
+XY distance from ego vehicle: about 4.89 m
 Relative position: near_front_left
 ```
 
@@ -472,6 +493,37 @@ The JSON and CSV files make the pipeline output easier to inspect, compare, and 
 
 ---
 
+## Part 5: Bird's-Eye-View Visualization
+
+Part 5 adds a bird's-eye-view visualization of the final object proposal. The BEV plot converts the 3D detection output into a top-down 2D view using the object center and bounding box footprint.
+
+The visualization shows:
+
+```text
+ego vehicle origin
+object center location
+2D bounding box footprint
+heuristic object label
+relative position label
+```
+
+For frame `002000.bin`, the BEV visualization uses the exported detection result:
+
+```text
+center = [3.75, 3.14, -0.81]
+extent = [3.86, 1.66, 1.09]
+class_heuristic = vehicle_like
+relative_position = near_front_left
+```
+
+### BEV Visualization
+
+![Bird's-eye-view visualization for KITTI frame 002000](./results/bev_002000.png)
+
+The BEV view makes the detection easier to interpret from an autonomous driving perspective because it shows where the detected object is located relative to the ego vehicle.
+
+---
+
 ## Saved Outputs
 
 Intermediate and final outputs are saved inside the `results/` directory.
@@ -480,6 +532,7 @@ Current saved outputs:
 
 ```text
 results/bounding_boxes_002000.png
+results/bev_002000.png
 results/non_ground_cloud_002000.ply
 results/clustered_cloud_002000.ply
 results/detections_002000.json
@@ -489,6 +542,8 @@ results/detections_002000.csv
 The `.ply` files can be reopened later in Open3D, MeshLab, CloudCompare, or other 3D visualization tools.
 
 The `.json` and `.csv` files contain structured detection-level outputs.
+
+The `.png` files provide visual summaries of the 3D bounding box proposal and bird's-eye-view detection output.
 
 ---
 
@@ -500,6 +555,7 @@ kitti-pointcloud-perception/
 │   └── velodyne/
 ├── results/
 │   ├── bounding_boxes_002000.png
+│   ├── bev_002000.png
 │   ├── non_ground_cloud_002000.ply
 │   ├── clustered_cloud_002000.ply
 │   ├── detections_002000.json
@@ -511,6 +567,7 @@ kitti-pointcloud-perception/
 │   ├── detection.py
 │   ├── spatial_analysis.py
 │   ├── export.py
+│   ├── bev.py
 │   └── visualize.py
 ├── main.py
 ├── requirements.txt
@@ -599,6 +656,21 @@ Main responsibilities:
 
 ---
 
+### `src/bev.py`
+
+Contains bird's-eye-view visualization utilities.
+
+Main responsibilities:
+
+- Receive detection outputs
+- Plot the ego vehicle origin
+- Plot object centers in top-down view
+- Draw 2D bounding box footprints
+- Add detection labels and relative position labels
+- Save BEV visualizations as `.png` files
+
+---
+
 ### `src/visualize.py`
 
 Contains Open3D visualization utilities.
@@ -630,6 +702,7 @@ Main steps:
 - Estimate 3D bounding boxes
 - Add frame ID
 - Compute ego-centric spatial metrics
+- Generate BEV visualization
 - Print detection summary
 - Save intermediate point clouds
 - Export final detections as JSON and CSV
@@ -658,10 +731,12 @@ Completed components:
 - Heuristic object labeling
 - Ego-centric distance calculation
 - Relative position labeling
+- Bird's-eye-view visualization
 - Detection JSON export
 - Detection CSV export
 - Saving non-ground point cloud as `.ply`
 - Saving clustered point cloud as `.ply`
+- Saving visualization outputs as `.png`
 
 ---
 
@@ -679,6 +754,7 @@ Important observations:
 - Bounding box estimation helps convert clusters into object-like proposals.
 - Geometry filtering is required because DBSCAN can produce merged or background-like clusters.
 - Spatial analysis makes detections more useful by describing where objects are relative to the ego vehicle.
+- BEV visualization makes the final detection output easier to interpret from an autonomous driving perspective.
 - Structured JSON and CSV exports make the pipeline easier to inspect and extend.
 - The current pipeline performs clustering-based object proposal generation, not trained deep learning-based 3D object detection.
 
@@ -703,12 +779,12 @@ Current limitations:
 
 Planned improvements:
 
-- Generate bird’s-eye-view visualization
 - Add optional KITTI label comparison for evaluation-lite
 - Test the pipeline on more frames and select clean examples
 - Add batch processing across multiple KITTI frames
 - Add oriented bounding boxes for better object proposal quality
 - Save aggregate detection summaries across frames
+- Add additional BEV plots for multiple frames
 
 ---
 
@@ -752,6 +828,7 @@ This project demonstrates practical experience with:
 - 3D bounding box estimation
 - Ego-centric spatial analysis
 - Relative object localization
+- Bird's-eye-view perception visualization
 - JSON and CSV detection export
 - Classical object proposal generation
 - Autonomous perception pipeline design

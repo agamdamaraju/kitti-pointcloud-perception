@@ -1,22 +1,22 @@
 [
     {
         "cluster_id": 0,
-        "num_points": 395,
+        "num_points": 417,
         "center": [
             3.75,
             3.14,
-            -0.84
+            -0.88
         ],
         "extent": [
             3.86,
             1.66,
-            1.15
+            1.22
         ],
-        "volume": 7.37,
-        "density": 53.57,
+        "volume": 7.86,
+        "density": 53.05,
         "class_heuristic": "vehicle_like",
         "frame_id": "002000",
-        "distance_3d_m": 4.96,
+        "distance_3d_m": 4.97,
         "distance_xy_m": 4.89,
         "relative_position": "near_front_left"
     }
