@@ -65,12 +65,12 @@ def create_bounding_box_detections(clusters):
         detection = {
             "cluster_id": int(cluster_id),
             "num_points": int(num_points),
-            "center": center.tolist(),
-            "extent": extent.tolist(),
-            "volume": volume,
-            "density": density,
+            "center": [round(float(v), 2) for v in center],
+            "extent": [round(float(v), 2) for v in extent],
+            "volume": round(float(volume), 2),
+            "density": round(float(density), 2),
             "class_heuristic": class_heuristic,
-            "bbox": bbox
+            "bbox": bbox,
         }
 
         detections.append(detection)

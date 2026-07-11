@@ -3,7 +3,10 @@ from src.preprocess import crop_roi, voxel_downsample, remove_ground_plane
 from src.visualize import visualize_cloud, visualize_ground_removal, visualize_clusters, visualize_bounding_boxes
 from src.clustering import run_dbscan_clustering, color_clusters, extract_clusters
 from src.detection import create_bounding_box_detections, print_detection_summary
+from src.spatial_analysis import add_spatial_analysis
+from src.export import save_detections_csv, save_detections_json
 import argparse, os, open3d as o3d
+from pathlib import Path
 
 def main():
     os.makedirs("results", exist_ok=True)
@@ -15,6 +18,7 @@ def main():
     parser.add_argument("--dbscan_eps", type=float, default=0.8)
     parser.add_argument("--dbscan_min_points", type=int, default=10)
     args = parser.parse_args()
+    frame_id = Path(args.bin_path).stem
 
     print(f"Loading point cloud: {args.bin_path}")
 
@@ -55,8 +59,9 @@ def main():
     print("Visualizing ground removal result...")
     visualize_ground_removal(non_ground_cloud, ground_cloud)
 
-    o3d.io.write_point_cloud("results/non_ground_cloud_002000.ply", non_ground_cloud)
-    print("Saved non-ground cloud to results/non_ground_cloud_002000.ply")
+    non_ground_output_path = f"results/non_ground_cloud_{frame_id}.ply"
+    o3d.io.write_point_cloud(non_ground_output_path, non_ground_cloud)
+    print(f"Saved non-ground cloud to {non_ground_output_path}")
 
     print("Running DBSCAN clustering on non-ground points...")
     labels = run_dbscan_clustering(non_ground_cloud, eps=args.dbscan_eps, min_points=args.dbscan_min_points)
@@ -66,8 +71,9 @@ def main():
     print("Visualizing DBSCAN clusters...")
     visualize_clusters(clustered_cloud)
 
-    o3d.io.write_point_cloud("results/clustered_cloud_002000.ply", clustered_cloud)
-    print("Saved clustered cloud to results/clustered_cloud_002000.ply")
+    clustered_output_path = f"results/clustered_cloud_{frame_id}.ply"
+    o3d.io.write_point_cloud(clustered_output_path, clustered_cloud)
+    print(f"Saved clustered cloud to {clustered_output_path}")
 
     clusters = extract_clusters(non_ground_cloud, labels, min_cluster_points=8, max_cluster_points=1000)
 
@@ -79,7 +85,17 @@ def main():
     
     print("Creating 3D bounding boxes for valid clusters...")
     detections, bbox_geometries = create_bounding_box_detections(clusters)
+    
+    for detection in detections:
+        detection["frame_id"] = frame_id
+    
+    detections = add_spatial_analysis(detections)
     print_detection_summary(detections)
+
+    json_output_path = f"results/detections_{frame_id}.json"
+    csv_output_path = f"results/detections_{frame_id}.csv"
+    save_detections_json(detections, json_output_path)
+    save_detections_csv(detections, csv_output_path)
 
     if len(bbox_geometries) > 0:
         print("Visualizing clusters with 3D bounding boxes...")

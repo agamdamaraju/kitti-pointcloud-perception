@@ -1,8 +1,8 @@
 # KITTI 3D Point Cloud Perception Pipeline
 
-This project implements a classical 3D LiDAR point cloud perception pipeline using the KITTI autonomous driving dataset. The pipeline processes raw Velodyne LiDAR point clouds, removes the ground plane, clusters non-ground points, estimates 3D bounding boxes, and generates object-like proposals for autonomous driving scenes.
+This project implements a classical 3D LiDAR point cloud perception pipeline using the KITTI autonomous driving dataset. The pipeline processes raw Velodyne LiDAR point clouds, removes the ground plane, clusters non-ground points, estimates 3D bounding boxes, computes ego-centric spatial metrics, and exports structured detection results.
 
-The goal of this project is to demonstrate practical 3D point cloud processing techniques for perception pipelines, including LiDAR data loading, region-of-interest filtering, voxel downsampling, RANSAC ground removal, DBSCAN clustering, 3D bounding box estimation, and basic heuristic object labeling.
+The goal of this project is to demonstrate practical 3D point cloud processing techniques for autonomous perception pipelines, including LiDAR data loading, region-of-interest filtering, voxel downsampling, RANSAC ground removal, DBSCAN clustering, 3D bounding box estimation, spatial analysis, and structured output generation.
 
 ---
 
@@ -21,6 +21,9 @@ The pipeline currently supports:
 - Applying DBSCAN clustering to non-ground points
 - Estimating 3D bounding boxes around valid clusters
 - Applying simple geometry-based object heuristics
+- Computing ego-centric spatial metrics
+- Assigning relative object position labels
+- Saving detection outputs as JSON and CSV
 - Saving intermediate point cloud outputs as `.ply` files
 
 ---
@@ -71,7 +74,9 @@ DBSCAN clustering on non-ground points
         ↓
 Geometry-based heuristic labeling
         ↓
-Object-like detection summary
+Ego-centric spatial analysis
+        ↓
+JSON and CSV detection export
 ```
 
 ---
@@ -212,7 +217,7 @@ eps = 0.8, min_points = 20
 eps = 0.6, min_points = 6
 ```
 
-The final Day 3 result used:
+The Part 3 and Part 4 results used:
 
 ```text
 voxel_size = 0.15
@@ -260,7 +265,80 @@ A cluster is classified as `vehicle_like` when its bounding box dimensions fall 
 
 ---
 
-## Sample Day 1 Result: Ground Removal
+### 9. Ego-Centric Spatial Analysis
+
+After bounding box estimation, the pipeline computes spatial metrics for each detection relative to the ego vehicle.
+
+For each detection, the pipeline calculates:
+
+```text
+3D distance from ego vehicle
+Ground-plane XY distance from ego vehicle
+Relative object position
+Bounding box center
+Bounding box dimensions
+Point density
+```
+
+Distance is computed from the bounding box center:
+
+```python
+distance_3d = sqrt(x^2 + y^2 + z^2)
+distance_xy = sqrt(x^2 + y^2)
+```
+
+The relative position is assigned using the object center location in LiDAR coordinates:
+
+```text
+near_front_left
+near_front_center
+near_front_right
+mid_front_left
+mid_front_center
+mid_front_right
+far_front_left
+far_front_center
+far_front_right
+```
+
+This converts raw 3D detections into more interpretable ego-centric perception outputs.
+
+---
+
+### 10. Detection Export
+
+The final detection results are exported as both JSON and CSV.
+
+Example JSON output:
+
+```json
+[
+    {
+        "cluster_id": 0,
+        "num_points": 392,
+        "center": [3.75, 3.14, -0.83],
+        "extent": [3.86, 1.66, 1.11],
+        "volume": 7.15,
+        "density": 54.81,
+        "class_heuristic": "vehicle_like",
+        "frame_id": "002000",
+        "distance_3d_m": 4.96,
+        "distance_xy_m": 4.89,
+        "relative_position": "near_front_left"
+    }
+]
+```
+
+Example CSV output:
+
+```text
+frame_id,cluster_id,class_heuristic,num_points,center_x,center_y,center_z,extent_x,extent_y,extent_z,volume,density,distance_3d_m,distance_xy_m,relative_position
+002000,0,vehicle_like,392,3.75,3.14,-0.83,3.86,1.66,1.11,7.15,54.81,4.96,4.89,near_front_left
+```
+
+---
+
+## Part 1: Ground Removal
 
 Example command:
 
@@ -268,7 +346,7 @@ Example command:
 python main.py --bin_path data/velodyne/training/velodyne/000010.bin
 ```
 
-Sample output:
+Output:
 
 ```text
 Raw points: 115875
@@ -290,17 +368,17 @@ Since the z coefficient is close to `1.0`, the estimated plane is mostly horizon
 
 ---
 
-## Sample Day 2 Result: DBSCAN Clustering
+## Part 2: DBSCAN Clustering
 
 After removing the ground plane, DBSCAN clustering was applied to the non-ground point cloud. The goal was to group nearby 3D points into object-like clusters that could represent vehicles, pedestrians, poles, signs, trees, or other scene structures.
 
-Sample command:
+Command:
 
 ```bash
 python main.py --bin_path data/velodyne/training/velodyne/000010.bin --dbscan_eps 0.8 --dbscan_min_points 10
 ```
 
-Sample output:
+Output:
 
 ```text
 Running DBSCAN clustering on non-ground points...
@@ -312,11 +390,11 @@ Valid clusters after filtering: 1
 Cluster 0: 303 points
 ```
 
-Day 2 showed that clustering raw non-ground LiDAR points is sensitive to preprocessing quality and DBSCAN parameters. Some clusters can appear scattered or merge with scan-line structures, so bounding box filtering is needed before treating clusters as object proposals.
+Part 2 showed that clustering raw non-ground LiDAR points is sensitive to preprocessing quality and DBSCAN parameters. Some clusters can appear scattered or merge with scan-line structures, so bounding box filtering is needed before treating clusters as object proposals.
 
 ---
 
-## Sample Day 3 Result: 3D Bounding Box Proposal
+## Part 3: 3D Bounding Box Proposal
 
 For frame `002000.bin`, the pipeline produced a valid vehicle-like object proposal.
 
@@ -366,32 +444,51 @@ These dimensions are consistent with a compact vehicle-like object proposal in a
 
 ---
 
-## Saved Point Cloud Outputs
+## Part 4: Spatial Analysis and Export
 
-Intermediate point clouds are saved as `.ply` files using Open3D.
+Part 4 extends the bounding box output with ego-centric spatial analysis and structured export files.
 
-Example:
+For frame `002000.bin`, the detection result includes:
 
-```python
-o3d.io.write_point_cloud(
-    "results/non_ground_cloud_002000.ply",
-    non_ground_cloud
-)
-
-o3d.io.write_point_cloud(
-    "results/clustered_cloud_002000.ply",
-    clustered_cloud
-)
+```text
+Object class heuristic: vehicle_like
+Number of cluster points: 392
+Bounding box center: [3.75, 3.14, -0.83]
+Bounding box extent: [3.86, 1.66, 1.11]
+Point density: 54.81
+3D distance from ego vehicle: 4.96 m
+XY distance from ego vehicle: 4.89 m
+Relative position: near_front_left
 ```
+
+Generated output files:
+
+```text
+results/detections_002000.json
+results/detections_002000.csv
+```
+
+The JSON and CSV files make the pipeline output easier to inspect, compare, and integrate into downstream perception or evaluation workflows.
+
+---
+
+## Saved Outputs
+
+Intermediate and final outputs are saved inside the `results/` directory.
 
 Current saved outputs:
 
 ```text
+results/bounding_boxes_002000.png
 results/non_ground_cloud_002000.ply
 results/clustered_cloud_002000.ply
+results/detections_002000.json
+results/detections_002000.csv
 ```
 
-These files can be reopened later in Open3D, MeshLab, CloudCompare, or other 3D visualization tools.
+The `.ply` files can be reopened later in Open3D, MeshLab, CloudCompare, or other 3D visualization tools.
+
+The `.json` and `.csv` files contain structured detection-level outputs.
 
 ---
 
@@ -404,12 +501,16 @@ kitti-pointcloud-perception/
 ├── results/
 │   ├── bounding_boxes_002000.png
 │   ├── non_ground_cloud_002000.ply
-│   └── clustered_cloud_002000.ply
+│   ├── clustered_cloud_002000.ply
+│   ├── detections_002000.json
+│   └── detections_002000.csv
 ├── src/
 │   ├── loader.py
 │   ├── preprocess.py
 │   ├── clustering.py
 │   ├── detection.py
+│   ├── spatial_analysis.py
+│   ├── export.py
 │   └── visualize.py
 ├── main.py
 ├── requirements.txt
@@ -472,6 +573,32 @@ Main responsibilities:
 
 ---
 
+### `src/spatial_analysis.py`
+
+Contains ego-centric spatial analysis utilities.
+
+Main responsibilities:
+
+- Compute 3D distance from the ego vehicle
+- Compute ground-plane XY distance from the ego vehicle
+- Assign relative position labels based on object center
+- Add spatial metrics to detection dictionaries
+
+---
+
+### `src/export.py`
+
+Contains detection export utilities.
+
+Main responsibilities:
+
+- Remove non-serializable Open3D objects before export
+- Save detection outputs as JSON
+- Save detection outputs as CSV
+- Create structured outputs for downstream inspection
+
+---
+
 ### `src/visualize.py`
 
 Contains Open3D visualization utilities.
@@ -501,8 +628,11 @@ Main steps:
 - Run DBSCAN clustering
 - Extract valid clusters
 - Estimate 3D bounding boxes
+- Add frame ID
+- Compute ego-centric spatial metrics
 - Print detection summary
 - Save intermediate point clouds
+- Export final detections as JSON and CSV
 
 ---
 
@@ -526,6 +656,10 @@ Completed components:
 - 3D bounding box estimation
 - Geometry-based object proposal filtering
 - Heuristic object labeling
+- Ego-centric distance calculation
+- Relative position labeling
+- Detection JSON export
+- Detection CSV export
 - Saving non-ground point cloud as `.ply`
 - Saving clustered point cloud as `.ply`
 
@@ -544,6 +678,8 @@ Important observations:
 - DBSCAN can group nearby non-ground points, but results depend strongly on `eps`, `min_points`, and preprocessing quality.
 - Bounding box estimation helps convert clusters into object-like proposals.
 - Geometry filtering is required because DBSCAN can produce merged or background-like clusters.
+- Spatial analysis makes detections more useful by describing where objects are relative to the ego vehicle.
+- Structured JSON and CSV exports make the pipeline easier to inspect and extend.
 - The current pipeline performs clustering-based object proposal generation, not trained deep learning-based 3D object detection.
 
 ---
@@ -567,13 +703,12 @@ Current limitations:
 
 Planned improvements:
 
-- Compute ego-centric spatial metrics such as object distance and relative position
-- Save detection-level outputs as JSON
-- Generate a CSV summary across multiple frames
-- Add bird’s-eye-view visualization
+- Generate bird’s-eye-view visualization
 - Add optional KITTI label comparison for evaluation-lite
 - Test the pipeline on more frames and select clean examples
+- Add batch processing across multiple KITTI frames
 - Add oriented bounding boxes for better object proposal quality
+- Save aggregate detection summaries across frames
 
 ---
 
@@ -595,6 +730,8 @@ Bounding Box Estimation
 Spatial Analysis
         ↓
 BEV Visualization
+        ↓
+Structured Detection Export
 ```
 
 ---
@@ -613,5 +750,8 @@ This project demonstrates practical experience with:
 - Ground plane removal
 - DBSCAN clustering
 - 3D bounding box estimation
+- Ego-centric spatial analysis
+- Relative object localization
+- JSON and CSV detection export
 - Classical object proposal generation
 - Autonomous perception pipeline design

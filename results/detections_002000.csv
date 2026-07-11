@@ -1,0 +1,2 @@
+frame_id,cluster_id,class_heuristic,num_points,center_x,center_y,center_z,extent_x,extent_y,extent_z,volume,density,distance_3d_m,distance_xy_m,relative_position
+002000,0,vehicle_like,395,3.75,3.14,-0.84,3.86,1.66,1.15,7.37,53.57,4.96,4.89,near_front_left
